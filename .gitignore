@@ -206,5 +206,5 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-border_map.png
-id_map.png
+border_map_*.png
+id_map_*.png

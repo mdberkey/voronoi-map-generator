@@ -268,8 +268,8 @@ class VoronoiMapGenerator:
         border_draw.line([(0, 0), (0, h)], fill=255, width=border_width)
         border_draw.line([(w, 0), (w, h)], fill=255, width=border_width)
 
-        id_map.save("id_map.png")
-        border_map.save("border_map.png")
+        id_map.save(f"id_map_{self.seed}.png")
+        border_map.save(f"border_map_{self.seed}.png")
         print("Generated voronoi_id_map.png and voronoi_border_map.png")
 
 
