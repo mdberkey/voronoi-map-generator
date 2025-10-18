@@ -4,6 +4,7 @@ from scipy.spatial import Voronoi
 from PIL import Image, ImageDraw
 import argparse
 import sys
+from scipy.ndimage import label
 
 class VoronoiMapGenerator:
     def __init__(self, num_points, width, height, iterations, seed):
@@ -192,6 +193,37 @@ class VoronoiMapGenerator:
             y = self.bbox[3]
             x = x1 + (x2 - x1) * (y - y1) / (y2 - y1) if y1 != y2 else x1
             return [x, y]
+    
+    def _fill_gaps_with_color(self, img, seed):
+        img_array = np.array(img)
+        
+        gap_mask = np.sum(img_array, axis=2) < 10
+
+        labeled_array, num_features = label(gap_mask)
+        
+        if num_features == 0:
+            return Image.fromarray(img_array)
+        
+        if seed is not None:
+            gap_rng = random.Random(seed + 1)
+            randint_func = gap_rng.randint
+        else:
+            randint_func = random.randint
+            
+        new_colors = {}
+        
+        for i in range(1, num_features + 1):
+            
+            new_color = (
+                randint_func(50, 255),
+                randint_func(50, 255),
+                randint_func(50, 255)
+            )
+            gap_pixels = labeled_array == i
+            
+            img_array[gap_pixels] = new_color
+            
+        return Image.fromarray(img_array)
 
     def generate(self):
         self._relax_points()
@@ -226,8 +258,18 @@ class VoronoiMapGenerator:
                 id_draw.polygon(flat_poly, fill=colors[region_idx])
                 border_draw.line(flat_poly + [flat_poly[0]], fill=255, width=1)
 
-        id_map.save("voronoi_id_map.png")
-        border_map.save("voronoi_border_map.png")
+        id_map = self._fill_gaps_with_color(id_map, self.seed)
+
+        w = self.width - 1
+        h = self.height - 1
+        border_width = 1
+        border_draw.line([(0, 0), (w, 0)], fill=255, width=border_width)
+        border_draw.line([(0, h), (w, h)], fill=255, width=border_width)
+        border_draw.line([(0, 0), (0, h)], fill=255, width=border_width)
+        border_draw.line([(w, 0), (w, h)], fill=255, width=border_width)
+
+        id_map.save("id_map.png")
+        border_map.save("border_map.png")
         print("Generated voronoi_id_map.png and voronoi_border_map.png")
 
 
