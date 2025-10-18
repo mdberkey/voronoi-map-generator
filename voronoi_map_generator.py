@@ -5,6 +5,7 @@ from PIL import Image, ImageDraw
 import argparse
 import sys
 from scipy.ndimage import label
+import json
 
 class VoronoiMapGenerator:
     def __init__(self, num_points, width, height, iterations, seed):
@@ -14,6 +15,7 @@ class VoronoiMapGenerator:
         self.iterations = iterations
         self.seed = seed
         self.bbox = np.array([0, width, 0, height])
+        self.colors = {} # region_idx -> rgb color
 
         if self.seed is not None:
             np.random.seed(self.seed)
@@ -107,8 +109,6 @@ class VoronoiMapGenerator:
         if ridge_index.size == 0:
             return []
 
-        ridge_p1_idx, ridge_p2_idx = self.vor.ridge_points[ridge_index[0]]
-
         direction = np.array([end_v[1] - start_v[1], start_v[0] - end_v[0]])
         midpoint = (start_v + end_v) / 2
         
@@ -194,7 +194,7 @@ class VoronoiMapGenerator:
             x = x1 + (x2 - x1) * (y - y1) / (y2 - y1) if y1 != y2 else x1
             return [x, y]
     
-    def _fill_gaps_with_color(self, img, seed):
+    def _fill_gaps_with_color(self, img):
         img_array = np.array(img)
         
         gap_mask = np.sum(img_array, axis=2) < 10
@@ -204,26 +204,27 @@ class VoronoiMapGenerator:
         if num_features == 0:
             return Image.fromarray(img_array)
         
-        if seed is not None:
-            gap_rng = random.Random(seed + 1)
-            randint_func = gap_rng.randint
-        else:
-            randint_func = random.randint
-            
-        new_colors = {}
-        
+        region_idx = np.int64(len(self.colors))
         for i in range(1, num_features + 1):
-            
             new_color = (
-                randint_func(50, 255),
-                randint_func(50, 255),
-                randint_func(50, 255)
+                random.randint(50, 255),
+                random.randint(50, 255),
+                random.randint(50, 255)
             )
             gap_pixels = labeled_array == i
             
             img_array[gap_pixels] = new_color
-            
+
+            self.colors[region_idx] = new_color
+            region_idx += 1
+        
         return Image.fromarray(img_array)
+
+    def _generate_regions_txt(self):
+        formatted_colors = {f"#{r:02x}{g:02x}{b:02x}": int(k) for k, (r, g, b) in sorted(self.colors.items())}
+
+        with open(f"regions_{self.seed}.json", "w") as f:
+            json.dump(formatted_colors, f, indent=2)
 
     def generate(self):
         self._relax_points()
@@ -234,13 +235,11 @@ class VoronoiMapGenerator:
         id_draw = ImageDraw.Draw(id_map)
         border_draw = ImageDraw.Draw(border_map)
 
-        colors = {}
-
-        for i, point in enumerate(self.points):
+        for i in range(len(self.points)):
             region_idx = self.vor.point_region[i]
             
-            if region_idx not in colors:
-                colors[region_idx] = (
+            if region_idx not in self.colors:
+                self.colors[region_idx] = (
                     random.randint(50, 255),
                     random.randint(50, 255),
                     random.randint(50, 255)
@@ -255,10 +254,11 @@ class VoronoiMapGenerator:
 
             if len(clipped_poly) > 0:
                 flat_poly = [tuple(p) for p in clipped_poly]
-                id_draw.polygon(flat_poly, fill=colors[region_idx])
+                id_draw.polygon(flat_poly, fill=self.colors[region_idx])
                 border_draw.line(flat_poly + [flat_poly[0]], fill=255, width=1)
 
-        id_map = self._fill_gaps_with_color(id_map, self.seed)
+        id_map = self._fill_gaps_with_color(id_map)
+        self._generate_regions_txt()
 
         w = self.width - 1
         h = self.height - 1
@@ -270,7 +270,7 @@ class VoronoiMapGenerator:
 
         id_map.save(f"id_map_{self.seed}.png")
         border_map.save(f"border_map_{self.seed}.png")
-        print("Generated voronoi_id_map.png and voronoi_border_map.png")
+        print("Generated maps")
 
 
 if __name__ == '__main__':
